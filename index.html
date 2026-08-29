@@ -116,6 +116,14 @@
     background:var(--ink); color:#fff; padding:12px 20px; border-radius:14px; font-size:16px; font-weight:700;
     opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:20; max-width:90%; text-align:center;}
   .toast.on{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  .modal{position:fixed; inset:0; background:rgba(23,33,15,.55); display:none; align-items:center; justify-content:center; z-index:30; padding:24px;}
+  .modal.on{display:flex;}
+  .modalbox{background:var(--card); border-radius:22px; padding:24px 20px; width:100%; max-width:420px; text-align:center; box-shadow:0 12px 40px rgba(0,0,0,.3);}
+  .modalicon{font-size:46px; margin-bottom:6px;}
+  .modaltext{font-size:22px; font-weight:700; color:var(--ink); margin-bottom:20px; line-height:1.35;}
+  .modalbtns{display:grid; grid-template-columns:1fr 1.4fr; gap:12px;}
+  .modalbtns .btn{height:66px;}
 </style>
 </head>
 <body>
@@ -215,6 +223,17 @@
 
 <div class="toast" id="toast"></div>
 
+<div class="modal" id="modal">
+  <div class="modalbox">
+    <div class="modalicon">🐄</div>
+    <div class="modaltext" id="modalText"></div>
+    <div class="modalbtns">
+      <button class="btn back" id="modalNo">✕ No</button>
+      <button class="btn go" id="modalYes">✓ Sí, agregar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ================= Almacenamiento (funciona dentro de Claude y como archivo suelto en Chrome) ================= */
 const Store = (() => {
@@ -242,9 +261,11 @@ let hatoMap = {};       // clave normalizada -> nombre
 let speakOn = true;
 
 function normNum(x){ x=String(x).trim(); return /^\d+$/.test(x) ? String(parseInt(x,10)) : x.toLowerCase(); }
+function cowKey(a){ return (a&&a.n) ? ("n:"+normNum(a.n)) : (a&&a.nombre ? ("m:"+normText(a.nombre)) : ""); }
+function recKey(r){ return (r&&r.n) ? normNum(r.n) : ("m:"+normText(r&&r.nombre)); }
 function today(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function nowHM(){ const d=new Date(); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }
-function rebuildMap(){ hatoMap={}; hato.forEach(a=>{hatoMap[normNum(a.n)]=a.nombre||"";}); }
+function rebuildMap(){ hatoMap={}; hato.forEach(a=>{ if(a.n) hatoMap[normNum(a.n)]=a.nombre||""; }); }
 
 async function load(){
   try{ hato = JSON.parse(await Store.get("hato")||"[]"); }catch(e){ hato=[]; }
@@ -327,11 +348,20 @@ function matchCowByName(txt){
 }
 let recog=null, recActive=false, voiceTimer=null;
 function stopVoice(){ try{ recog&&recog.abort(); }catch(e){} recActive=false; if(micKey) micKey.classList.remove("rec"); clearTimeout(voiceTimer); }
+function selectCow(c){
+  pendingCow={n:c.n||"", nombre:c.nombre||""};
+  speak((c.nombre||("vaca "+c.n))+". ¿Cuántos kilos?");
+  phase="kg"; buf=""; renderCapture();
+}
+function titleCase(s){ s=(s||"").trim(); return s ? s.charAt(0).toUpperCase()+s.slice(1) : s; }
 function handleVoiceResult(alts){
   if(phase==="vaca"){
-    for(const t of alts){ const c=matchCowByName(t); if(c){ buf=String(c.n); renderCapture(); speak(c.nombre||("vaca "+c.n)); return; } }
+    for(const t of alts){ const c=matchCowByName(t); if(c){ if(c.n){ buf=String(c.n); renderCapture(); speak(c.nombre||("vaca "+c.n)); } else { selectCow(c); } return; } }
     for(const t of alts){ const n=parseInt_es(t); if(n!=null){ buf=String(n); renderCapture(); return; } }
-    toast('No entendí: "'+(alts[0]||"")+'"'); speak("No entendí. Repita o use los botones.");
+    // entendió algo pero no es un número ni está en la lista -> ofrecer agregar
+    const spoken=(alts[0]||"").trim();
+    if(normText(spoken)){ askAdd(titleCase(spoken)); }
+    else { toast("No escuché bien, repita"); speak("No escuché bien. Repita o use los botones."); }
   } else {
     for(const t of alts){ const k=parseKg_es(t); if(k!=null){ buf=String(k); renderCapture(); return; } }
     toast('No entendí: "'+(alts[0]||"")+'"'); speak("No entendí. Repita o use los botones.");
@@ -410,7 +440,7 @@ function renderCapture(){
   } else {
     prompt.textContent = "Kilos · "+(pendingCow.nombre||("Vaca "+pendingCow.n));
     disp.textContent = buf||"0";
-    dispName.textContent = "Vaca "+pendingCow.n; dispName.className="name";
+    dispName.textContent = pendingCow.n ? ("Vaca "+pendingCow.n) : (pendingCow.nombre||"Vaca nueva"); dispName.className="name";
     goBtn.textContent="Guardar ✓"; goBtn.disabled = !(parseFloat(buf)>0);
     backBtn.style.visibility="visible";
   }
@@ -429,7 +459,7 @@ function advance(){
     const rec={n:pendingCow.n, nombre:pendingCow.nombre, kg:kg, hora:nowHM()};
     const d=today(); if(!registros[d]) registros[d]=[];
     // si la vaca ya estaba hoy, reemplaza
-    const i=registros[d].findIndex(r=>normNum(r.n)===normNum(rec.n));
+    const i=registros[d].findIndex(r=>recKey(r)===recKey(rec));
     if(i>=0) registros[d][i]=rec; else registros[d].push(rec);
     saveReg();
     speak((pendingCow.nombre||("vaca "+pendingCow.n))+", "+String(kg).replace("."," punto ")+" kilos. Guardado.");
@@ -465,24 +495,28 @@ function renderAnimals(filter=""){
   const f=filter.trim().toLowerCase();
   const rows=[...hato].sort((a,b)=>{
     const na=parseInt(a.n,10), nb=parseInt(b.n,10);
-    if(!isNaN(na)&&!isNaN(nb)) return na-nb; return String(a.n).localeCompare(String(b.n));
+    if(!isNaN(na)&&!isNaN(nb)) return na-nb;
+    if(!isNaN(na)) return -1; if(!isNaN(nb)) return 1;
+    return String(a.nombre||"").localeCompare(String(b.nombre||""));
   }).filter(a=> !f || String(a.n).toLowerCase().includes(f) || (a.nombre||"").toLowerCase().includes(f));
   $("#listCount").textContent=hato.length;
   const el=$("#animalList");
   if(rows.length===0){ el.innerHTML='<div class="empty">'+(hato.length?"Sin resultados.":"El hato está vacío. Agregue vacas arriba.")+'</div>'; return; }
   el.innerHTML=rows.map(a=>{
-    const key=encodeURIComponent(a.n);
-    return '<div class="animal"><div class="n">'+a.n+'</div><div class="nm">'+(a.nombre||"<i style=\'color:#9aa38f\'>sin nombre</i>")+'</div>'+
+    const key=encodeURIComponent(cowKey(a));
+    const num = a.n ? a.n : "🔤";
+    return '<div class="animal"><div class="n">'+num+'</div><div class="nm">'+(a.nombre||"<i style=\'color:#9aa38f\'>sin nombre</i>")+'</div>'+
       '<button class="ed" data-ed="'+key+'">✏️</button><button class="rm" data-rm="'+key+'">🗑️</button></div>';
   }).join("");
   el.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{
-    const n=decodeURIComponent(b.getAttribute("data-rm"));
-    if(confirm("¿Quitar la vaca "+n+" del hato?")){ hato=hato.filter(a=>String(a.n)!==String(n)); saveHato(); renderAnimals($("#search").value); }
+    const k=decodeURIComponent(b.getAttribute("data-rm"));
+    const a=hato.find(x=>cowKey(x)===k); if(!a) return;
+    if(confirm("¿Quitar "+(a.nombre||("vaca "+a.n))+" del hato?")){ hato=hato.filter(x=>cowKey(x)!==k); saveHato(); renderAnimals($("#search").value); }
   });
   el.querySelectorAll("[data-ed]").forEach(b=>b.onclick=()=>{
-    const n=decodeURIComponent(b.getAttribute("data-ed"));
-    const a=hato.find(a=>String(a.n)===String(n));
-    const nuevo=prompt2("Nombre para la vaca "+n+":", a.nombre||"");
+    const k=decodeURIComponent(b.getAttribute("data-ed"));
+    const a=hato.find(x=>cowKey(x)===k); if(!a) return;
+    const nuevo=prompt2("Nombre para "+(a.n?("la vaca "+a.n):"esta vaca")+":", a.nombre||"");
     if(nuevo!==null){ a.nombre=nuevo.trim(); saveHato(); renderAnimals($("#search").value); }
   });
 }
@@ -490,8 +524,9 @@ function prompt2(msg,val){ return window.prompt(msg,val); }
 
 $("#addBtn").onclick=()=>{
   const n=$("#addNum").value.trim(), nm=$("#addName").value.trim();
-  if(!n){ toast("Escriba el número de la vaca"); return; }
-  if(hato.some(a=>normNum(a.n)===normNum(n))){ toast("La vaca "+n+" ya existe"); return; }
+  if(!n && !nm){ toast("Escriba el número o el nombre"); return; }
+  const key = n ? ("n:"+normNum(n)) : ("m:"+normText(nm));
+  if(hato.some(a=>cowKey(a)===key)){ toast("Esa vaca ya existe"); return; }
   hato.push({n:n, nombre:nm}); saveHato();
   $("#addNum").value=""; $("#addName").value=""; renderAnimals($("#search").value);
   toast("✓ Agregada: "+(nm||("Vaca "+n)));
@@ -530,7 +565,7 @@ $("#restoreFile").onchange=(e)=>{
       const obj=JSON.parse(r.result);
       const arr=Array.isArray(obj)?obj:(obj.hato||[]);
       let added=0;
-      arr.forEach(a=>{ if(a && a.n!=null && !hato.some(x=>normNum(x.n)===normNum(a.n))){ hato.push({n:String(a.n), nombre:a.nombre||""}); added++; } });
+      arr.forEach(a=>{ if(!a) return; const cand={n:a.n?String(a.n):"", nombre:a.nombre||""}; if((cand.n||cand.nombre) && !hato.some(x=>cowKey(x)===cowKey(cand))){ hato.push(cand); added++; } });
       saveHato(); renderAnimals($("#search").value);
       toast(added?("✓ Restauradas "+added+" vacas"):"El hato ya estaba al día");
     }catch(err){ toast("El archivo no es un respaldo válido"); }
@@ -610,6 +645,23 @@ document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
 let toastT=null;
 function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("on"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("on"),2400); }
 $("#spkBtn").onclick=()=>{ speakOn=!speakOn; Store.set("speak",speakOn?"1":"0"); $("#spkBtn").textContent=speakOn?"🔊":"🔇"; toast(speakOn?"Voz activada":"Voz apagada"); if(speakOn) speak("Voz activada"); };
+
+let modalCb=null;
+function askAdd(name){
+  $("#modalText").textContent = '"'+name+'" no está en la lista. ¿La agregamos?';
+  $("#modal").classList.add("on");
+  speak(name+" no está en la lista. ¿La agregamos? Toque el botón verde para sí.");
+  modalCb=(yes)=>{
+    $("#modal").classList.remove("on"); modalCb=null;
+    if(yes){
+      let c=matchCowByName(name);
+      if(!c){ c={n:"", nombre:name}; hato.push(c); saveHato(); toast("✓ "+name+" agregada al hato"); }
+      selectCow(c);
+    } else { speak("Listo, no la agregué."); }
+  };
+}
+$("#modalYes").onclick=()=>{ if(modalCb) modalCb(true); };
+$("#modalNo").onclick=()=>{ if(modalCb) modalCb(false); };
 
 /* ================= Arranque ================= */
 (async()=>{
