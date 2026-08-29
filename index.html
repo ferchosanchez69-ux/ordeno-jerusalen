@@ -105,10 +105,33 @@
   .bigbtn.clr{background:#fff; color:var(--ocher); border:2px solid var(--ocher);}
   .datepick{display:flex; align-items:center; gap:10px; margin-bottom:14px;}
   .datepick label{font-weight:700; color:var(--muted);}
+  .cmpnote{font-size:13px; color:var(--muted); margin:0 0 12px; text-align:center;}
+  .cmprow{display:flex; align-items:center; gap:10px; padding:12px 14px; border:2px solid var(--line); border-radius:14px; background:#fff; margin-bottom:8px;}
+  .cmprow .who{flex:1; min-width:0;}
+  .cmprow .who b{font-size:17px;} .cmprow .who small{display:block; color:var(--muted); font-size:12px;}
+  .cmprow .kg{text-align:right; font-variant-numeric:tabular-nums; margin-right:4px;}
+  .cmprow .kg .now{font-size:20px; font-weight:800;} .cmprow .kg .prev{font-size:12px; color:var(--muted);}
+  .cmprow .delta{min-width:86px; text-align:right; font-weight:800; font-size:16px; font-variant-numeric:tabular-nums;}
+  .up{color:var(--green-d);} .down{color:var(--ocher);} .flat{color:var(--muted);}
+  .cmprow.alert{border-color:var(--ocher); background:var(--ocher-l);}
+  .cmpdetail{padding:12px 14px; border:2px solid var(--line); border-top:none; border-radius:0 0 14px 14px; margin:-10px 0 8px; background:#FBFAF5;}
+  .cmpdetail .hd{display:flex; flex-wrap:wrap; gap:4px 16px; font-size:13px; color:var(--muted); margin-bottom:8px;}
+  .cmpdetail .hd b{color:var(--ink);}
+  .spark{width:100%; height:52px; display:block;}
+  .workdate{display:flex; align-items:center; gap:10px; background:#EEF6F0; border:2px solid #CFE6D6; border-radius:14px; padding:9px 12px; margin-bottom:12px;}
+  .workdate.past{background:var(--ocher-l); border-color:#E6C9B8;}
+  .wdlbl{font-weight:800; color:var(--muted); font-size:14px; white-space:nowrap;}
+  .wdinput{flex:1; font-size:16px; padding:8px 10px; border:2px solid var(--line); border-radius:10px; background:#fff; color:var(--ink);}
+  .wdtoday{background:var(--green); color:#fff; border-radius:10px; padding:10px 14px; font-weight:800; font-size:14px; white-space:nowrap;}
+  .rangebtns{display:flex; gap:8px; margin-bottom:12px;}
+  .rbtn{flex:1; background:#fff; border:2px solid var(--line); color:var(--muted); border-radius:12px; padding:11px 4px; font-weight:800; font-size:15px;}
+  .rbtn.on{background:var(--green); color:#fff; border-color:var(--green);}
+  .trendchart{background:var(--card); border:2px solid var(--line); border-radius:16px; padding:14px 10px 8px; margin-bottom:16px;}
+  .trendchart .ttl{font-size:14px; color:var(--muted); font-weight:700; margin:0 0 8px; padding-left:4px;}
 
   /* ---- Navegación inferior ---- */
   nav{position:fixed; bottom:0; left:0; right:0; background:#fff; border-top:2px solid var(--line);
-    display:grid; grid-template-columns:repeat(3,1fr); padding:6px 6px calc(6px + env(safe-area-inset-bottom));}
+    display:grid; grid-template-columns:repeat(4,1fr); padding:6px 6px calc(6px + env(safe-area-inset-bottom));}
   nav button{background:none; padding:8px 4px; border-radius:14px; display:flex; flex-direction:column; align-items:center; gap:2px; color:var(--muted); font-size:13px; font-weight:700;}
   nav button .i{font-size:26px;}
   nav button.on{color:var(--green-d);}
@@ -135,13 +158,18 @@
     <div class="sub">Finca Jerusalén</div>
   </div>
   <div class="grow"></div>
-  <div class="stat"><b id="hCount">0</b> vacas<br><b id="hKg">0.0</b> kg hoy</div>
+  <div class="stat"><b id="hCount">0</b> vacas<br><b id="hKg">0.0</b> kg <span id="hKgLbl">hoy</span></div>
   <button class="spk" id="spkBtn" title="Voz de confirmación">🔊</button>
 </header>
 
 <main>
   <!-- ====== CAPTURA ====== -->
   <section class="view on" id="v-ordeno">
+    <div class="workdate" id="workBar">
+      <span class="wdlbl">Fecha:</span>
+      <input type="date" id="wdInput" class="wdinput">
+      <button class="wdtoday" id="wdToday" style="display:none;">Hoy</button>
+    </div>
     <div class="prompt" id="prompt">¿Qué vaca?</div>
     <div class="readout">
       <div class="big" id="disp">—</div>
@@ -154,7 +182,7 @@
     </div>
 
     <div class="today">
-      <h3>Registrado hoy</h3>
+      <h3 id="todayHdr">Registrado hoy</h3>
       <div id="todayList"></div>
     </div>
   </section>
@@ -216,6 +244,37 @@
     <button class="bigbtn cp" id="cpBtn">📋 Copiar los datos</button>
     <button class="bigbtn clr" id="clrBtn">🗑️ Vaciar este día</button>
     <p style="color:var(--muted); font-size:13px; text-align:center;">El archivo se llama <b>ordeno_FECHA.csv</b> y trae Fecha, Hora, Número, Nombre y Kg. Abre directo en columnas en Excel.</p>
+
+    <div class="card" style="margin-top:16px;">
+      <h2>Importar producción de un día</h2>
+      <p>Cargue toda la producción sin digitar vaca por vaca. Pegue dos columnas desde Excel (número y kilos) o suba un archivo.</p>
+      <div class="datepick" style="margin-bottom:10px;">
+        <label for="impDate">Fecha:</label>
+        <input type="date" id="impDate" style="max-width:200px;">
+      </div>
+      <textarea id="impText" rows="6" placeholder="Un registro por línea: número y kilos&#10;002   10.5&#10;309-3   8.2&#10;5   9"></textarea>
+      <button class="mini" id="impPasteBtn" style="height:52px; width:100%; margin-top:10px;">Cargar lo pegado</button>
+      <button class="mini ghost" id="impFileBtn" style="height:52px; width:100%; margin-top:10px;">📄 Subir archivo (CSV/TXT)</button>
+      <input type="file" id="impFile" accept=".csv,.txt,text/csv,text/plain" style="display:none;">
+      <p style="font-size:12px; color:var(--muted); margin-top:10px;">Si sus líneas traen la fecha adelante (ej. <code>2026-08-20; 002; 10,5</code>) puede cargar varios días de una vez. Reemplaza los datos existentes de esas vacas en esas fechas.</p>
+    </div>
+  </section>
+
+  <!-- ====== TENDENCIA ====== -->
+  <section class="view" id="v-tendencia">
+    <div class="rangebtns" id="rangeBtns">
+      <button class="rbtn on" data-r="7d">7 días</button>
+      <button class="rbtn" data-r="sem">Semanas</button>
+      <button class="rbtn" data-r="mes">Meses</button>
+    </div>
+    <div id="trendChart" class="trendchart"></div>
+    <div class="datepick">
+      <label for="cmpDate">Día:</label>
+      <input type="date" id="cmpDate" style="max-width:200px;">
+    </div>
+    <div id="cmpTotals"></div>
+    <div id="cmpNote" class="cmpnote"></div>
+    <div id="cmpList"></div>
   </section>
 </main>
 
@@ -223,6 +282,7 @@
   <button class="on" data-v="ordeno"><span class="i">🥛</span>Ordeño</button>
   <button data-v="animales"><span class="i">🐄</span>Animales</button>
   <button data-v="exportar"><span class="i">📤</span>Exportar</button>
+  <button data-v="tendencia"><span class="i">📈</span>Tendencia</button>
 </nav>
 
 <div class="toast" id="toast"></div>
@@ -396,6 +456,7 @@ function startVoice(){
 
 /* ================= Captura ================= */
 let phase="vaca";      // 'vaca' | 'kg'
+let workDate=today();  // fecha en la que se registra (hoy por defecto)
 let buf="";
 let pendingCow=null;   // {n, nombre}
 let micKey=null;
@@ -459,8 +520,8 @@ function advance(){
     const kg=parseFloat(buf);
     if(!(kg>0)) return;
     const rec={n:pendingCow.n, nombre:pendingCow.nombre, kg:kg, hora:nowHM()};
-    const d=today(); if(!registros[d]) registros[d]=[];
-    // si la vaca ya estaba hoy, reemplaza
+    const d=workDate; if(!registros[d]) registros[d]=[];
+    // si la vaca ya estaba ese día, reemplaza
     const i=registros[d].findIndex(r=>recKey(r)===recKey(rec));
     if(i>=0) registros[d][i]=rec; else registros[d].push(rec);
     saveReg();
@@ -473,9 +534,11 @@ goBtn.onclick=advance;
 backBtn.onclick=()=>{ if(phase==="kg"){ phase="vaca"; buf=pendingCow?pendingCow.n:""; pendingCow=null; renderCapture(); } };
 
 function renderToday(){
-  const d=today(); const list=registros[d]||[];
+  const d=workDate; const list=registros[d]||[];
+  const esHoy = d===today();
+  const hdr=$("#todayHdr"); if(hdr) hdr.textContent = esHoy ? "Registrado hoy" : "Registrado el "+d;
   const el=$("#todayList");
-  if(list.length===0){ el.innerHTML='<div class="empty">Aún no hay registros hoy. Marque el número de la vaca para empezar.</div>'; return; }
+  if(list.length===0){ el.innerHTML='<div class="empty">'+(esHoy?"Aún no hay registros hoy. Marque el número de la vaca para empezar.":"No hay registros en esta fecha. Marque la vaca para empezar.")+'</div>'; return; }
   const chips=[...list].reverse().map((r,idx)=>{
     const realIdx=list.length-1-idx;
     return '<div class="chip"><b>'+(r.nombre||("V"+r.n))+'</b> '+r.kg+' kg <span class="x" data-del="'+realIdx+'">✕</span></div>';
@@ -486,10 +549,11 @@ function renderToday(){
   });
 }
 function refreshHeader(){
-  const d=today(); const list=registros[d]||[];
+  const d=workDate; const list=registros[d]||[];
   const kg=list.reduce((s,r)=>s+(+r.kg||0),0);
   $("#hCount").textContent=list.length;
   $("#hKg").textContent=kg.toFixed(1);
+  $("#hKgLbl").textContent = (d===today()) ? "hoy" : d.slice(5);
 }
 
 /* ================= Animales ================= */
@@ -585,6 +649,219 @@ $("#restoreFile").onchange=(e)=>{
   r.readAsText(f); e.target.value="";
 };
 
+/* ================= Tendencia ================= */
+function sortedDates(){ return Object.keys(registros).filter(d=>(registros[d]||[]).length).sort(); }
+
+// --- Gráfico de producción por rango ---
+let trendRange="7d";
+function isoWeekKey(dstr){
+  const d=new Date(dstr+"T00:00:00");
+  const dt=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+  const day=(dt.getUTCDay()+6)%7; dt.setUTCDate(dt.getUTCDate()-day+3);
+  const firstThu=new Date(Date.UTC(dt.getUTCFullYear(),0,4));
+  const week=1+Math.round(((dt-firstThu)/86400000-3+((firstThu.getUTCDay()+6)%7))/7);
+  return dt.getUTCFullYear()+"-S"+String(week).padStart(2,"0");
+}
+function dailyTotals(){ const m={}; sortedDates().forEach(d=>{ m[d]=(registros[d]||[]).reduce((s,r)=>s+(+r.kg||0),0); }); return m; }
+function buildTrend(range){
+  const daily=dailyTotals(); const dates=Object.keys(daily).sort();
+  if(range==="7d") return dates.slice(-7).map(d=>({label:d.slice(8)+"/"+d.slice(5,7), value:daily[d]}));
+  const meses=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+  const keyer = range==="sem" ? isoWeekKey : (d=>d.slice(0,7));
+  const buckets={}, order=[];
+  dates.forEach(d=>{ const k=keyer(d); if(!(k in buckets)){buckets[k]=0; order.push(k);} buckets[k]+=daily[d]; });
+  return order.slice(-8).map(k=>{
+    let label=k;
+    if(range==="sem") label=k.split("-")[1];
+    else { const [y,m]=k.split("-"); label=meses[+m-1]; }
+    return {label, value:buckets[k]};
+  });
+}
+function barChartSVG(data){
+  if(!data.length) return '<div class="empty">Aún no hay datos suficientes para este rango.</div>';
+  const W=340,H=180,padB=28,padT=22,padL=8,padR=8;
+  const n=data.length, mx=Math.max(...data.map(d=>d.value),1);
+  const bw=(W-padL-padR)/n, inner=Math.min(bw*0.62,54);
+  let bars="";
+  data.forEach((d,i)=>{
+    const h=(H-padT-padB)*(d.value/mx);
+    const x=padL+i*bw+(bw-inner)/2, y=H-padB-h;
+    bars+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+inner.toFixed(1)+'" height="'+Math.max(h,2).toFixed(1)+'" rx="4" fill="#1F7A3D"/>';
+    bars+='<text x="'+(x+inner/2).toFixed(1)+'" y="'+(y-5).toFixed(1)+'" font-size="12" fill="#17210F" text-anchor="middle" font-weight="700">'+d.value.toFixed(0)+'</text>';
+    bars+='<text x="'+(x+inner/2).toFixed(1)+'" y="'+(H-9)+'" font-size="11" fill="#5B6650" text-anchor="middle">'+d.label+'</text>';
+  });
+  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;">'
+    +'<line x1="'+padL+'" y1="'+(H-padB)+'" x2="'+(W-padR)+'" y2="'+(H-padB)+'" stroke="#E4DFD3" stroke-width="1.5"/>'+bars+'</svg>';
+}
+function renderTrendChart(){
+  const data=buildTrend(trendRange);
+  const ttl = trendRange==="7d"?"Producción diaria (kg) — últimos 7 días" : trendRange==="sem"?"Producción por semana (kg)" : "Producción por mes (kg)";
+  $("#trendChart").innerHTML='<p class="ttl">'+ttl+'</p>'+barChartSVG(data);
+}
+
+// --- Comparación día vs día anterior ---
+function prevDateWithData(day){
+  const ds=sortedDates().filter(d=>d<day);
+  return ds.length ? ds[ds.length-1] : null;
+}
+function cowHistory(key){
+  // devuelve [{date, kg}] ordenado por fecha, para la vaca con esa recKey
+  const out=[];
+  sortedDates().forEach(d=>{
+    const r=(registros[d]||[]).find(x=>recKey(x)===key);
+    if(r) out.push({date:d, kg:+r.kg||0});
+  });
+  return out;
+}
+function sparkSVG(hist){
+  if(hist.length<2) return "";
+  const vals=hist.map(h=>h.kg); const mn=Math.min(...vals), mx=Math.max(...vals);
+  const W=300,H=52,pad=6; const rng=(mx-mn)||1;
+  const pts=hist.map((h,i)=>{
+    const x=pad+(W-2*pad)*(hist.length===1?0.5:i/(hist.length-1));
+    const y=H-pad-(H-2*pad)*((h.kg-mn)/rng);
+    return [x,y];
+  });
+  const line=pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ");
+  const last=pts[pts.length-1];
+  return '<svg class="spark" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">'
+    +'<path d="'+line+'" fill="none" stroke="#1F7A3D" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'
+    +'<circle cx="'+last[0].toFixed(1)+'" cy="'+last[1].toFixed(1)+'" r="3.5" fill="#1F7A3D"/></svg>';
+}
+function fmtDelta(d){
+  if(d>0.001) return {cls:"up", txt:"▲ "+d.toFixed(1)};
+  if(d<-0.001) return {cls:"down", txt:"▼ "+Math.abs(d).toFixed(1)};
+  return {cls:"flat", txt:"="};
+}
+let cmpOpen=null;
+function renderCompare(){
+  const day=$("#cmpDate").value||today();
+  const prev=prevDateWithData(day);
+  const cur=registros[day]||[];
+  const prevRecs=prev?(registros[prev]||[]):[];
+  const prevMap={}; prevRecs.forEach(r=>prevMap[recKey(r)]=+r.kg||0);
+  const sumCur=cur.reduce((s,r)=>s+(+r.kg||0),0);
+  const sumPrev=prevRecs.reduce((s,r)=>s+(+r.kg||0),0);
+
+  // Totales
+  const dd=fmtDelta(sumCur-sumPrev);
+  $("#cmpTotals").innerHTML='<div class="summary">'
+    +'<div class="stbox"><b>'+sumCur.toFixed(1)+'</b><span>kg hoy ('+cur.length+' vacas)</span></div>'
+    +'<div class="stbox"><b>'+(prev?sumPrev.toFixed(1):"—")+'</b><span>'+(prev?("kg "+prev):"sin día previo")+'</span></div>'
+    +'<div class="stbox"><b class="'+dd.cls+'">'+(prev?dd.txt:"—")+'</b><span>diferencia</span></div></div>';
+  $("#cmpNote").textContent = prev
+    ? "Comparando "+day+" con el día anterior con datos ("+prev+"). Ordenado por mayor caída primero."
+    : "Este es el primer día con datos. Cuando registre otro día, aquí verá la comparación.";
+
+  // Filas por vaca (union de ambos días), ordenadas por mayor caída
+  const keys=new Set([...cur.map(recKey), ...prevRecs.map(recKey)]);
+  const curMap={}; cur.forEach(r=>curMap[recKey(r)]=r);
+  const rows=[...keys].map(k=>{
+    const rc=curMap[k]; const pv=prevMap[k];
+    const now=rc?(+rc.kg||0):null;
+    const before=(pv!==undefined)?pv:null;
+    const delta=(now!=null&&before!=null)?(now-before):null;
+    const name=rc?(rc.nombre||("Vaca "+rc.n)):"";
+    return {k, name:name||etiquetaDesdeKey(k, prevRecs), now, before, delta};
+  });
+  rows.sort((a,b)=>{
+    const da=a.delta==null?9999:a.delta, db=b.delta==null?9999:b.delta;
+    return da-db;
+  });
+
+  const el=$("#cmpList");
+  if(rows.length===0){ el.innerHTML='<div class="empty">No hay registros ese día.</div>'; return; }
+  el.innerHTML=rows.map(r=>{
+    let deltaHtml, alert="";
+    if(r.now==null){ deltaHtml='<span class="flat">sin hoy</span>'; }
+    else if(r.before==null){ deltaHtml='<span class="flat">nueva</span>'; }
+    else { const d=fmtDelta(r.delta); const pct=r.before>0?Math.round(r.delta/r.before*100):0;
+      deltaHtml='<span class="'+d.cls+'">'+d.txt+'<br><small>'+(pct>0?"+":"")+pct+'%</small></span>';
+      if(r.delta<0 && r.before>0 && (r.delta/r.before)<=-0.15) alert=" alert"; }
+    const nowTxt=r.now!=null?r.now.toFixed(1):"—";
+    const prevTxt=r.before!=null?r.before.toFixed(1):"—";
+    return '<div class="cmprow'+alert+'" data-k="'+encodeURIComponent(r.k)+'">'
+      +'<div class="who"><b>'+r.name+'</b><small>toque para ver historial</small></div>'
+      +'<div class="kg"><div class="now">'+nowTxt+'</div><div class="prev">antes '+prevTxt+'</div></div>'
+      +'<div class="delta">'+deltaHtml+'</div></div>'
+      +'<div class="cmpdetail" id="det-'+encodeURIComponent(r.k)+'" style="display:none;"></div>';
+  }).join("");
+
+  el.querySelectorAll(".cmprow").forEach(row=>row.onclick=()=>{
+    const k=row.getAttribute("data-k");
+    const det=document.getElementById("det-"+k);
+    if(!det) return;
+    if(det.style.display!=="none"){ det.style.display="none"; cmpOpen=null; return; }
+    el.querySelectorAll(".cmpdetail").forEach(d=>d.style.display="none");
+    const hist=cowHistory(decodeURIComponent(k));
+    const prom=hist.length?hist.reduce((s,h)=>s+h.kg,0)/hist.length:0;
+    const ult=hist.length?hist[hist.length-1].kg:0;
+    const vsProm=ult-prom;
+    const rec=hist.slice(-8).map(h=>h.date.slice(5)+": <b>"+h.kg.toFixed(1)+"</b>").join(" · ");
+    det.innerHTML='<div class="hd"><span>Promedio histórico: <b>'+prom.toFixed(1)+' kg</b></span>'
+      +'<span>Último vs promedio: <b class="'+(vsProm>=0?"up":"down")+'">'+(vsProm>=0?"+":"")+vsProm.toFixed(1)+' kg</b></span>'
+      +'<span>Días con dato: <b>'+hist.length+'</b></span></div>'
+      +sparkSVG(hist)
+      +'<div style="font-size:12px;color:var(--muted);margin-top:6px;">'+rec+'</div>';
+    det.style.display="block"; cmpOpen=k;
+  });
+}
+function etiquetaDesdeKey(k, prevRecs){
+  const r=prevRecs.find(x=>recKey(x)===k);
+  return r?(r.nombre||("Vaca "+r.n)):k;
+}
+
+/* ================= Importar producción ================= */
+function splitCols(line){
+  if(line.includes("\t")) return line.split("\t").map(s=>s.trim());
+  if(line.includes(";")) return line.split(";").map(s=>s.trim());
+  if(/\s/.test(line.trim())) return line.trim().split(/\s+/);
+  if(line.includes(",")) return line.split(",").map(s=>s.trim());
+  return [line.trim()];
+}
+function isDateStr(s){ return /^\d{4}-\d{2}-\d{2}$/.test(s)||/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s); }
+function normDate(s){
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if(m){ let d=m[1],mo=m[2],y=m[3]; if(y.length===2)y="20"+y; return y+"-"+mo.padStart(2,"0")+"-"+d.padStart(2,"0"); }
+  return s;
+}
+function importProduccion(text, defDate){
+  const lines=text.split(/\r?\n/).map(l=>l.replace(/\uFEFF/g,"")).filter(l=>l.trim());
+  let count=0, errores=0; const dias=new Set();
+  lines.forEach(line=>{
+    let cols=splitCols(line).map(c=>c.replace(/^[;,]+|[;,]+$/g,"").trim()).filter(c=>c!=="");
+    if(cols.length<2){ errores++; return; }
+    if(cols.some(c=>/^kg$|n[uú]mero|nombre|^fecha$/i.test(c)) && !cols.some(c=>/^\d/.test(c))) return; // encabezado
+    let fecha=defDate, num, kg;
+    if(cols.length>=5 && isDateStr(cols[0])){ fecha=normDate(cols[0]); num=cols[2]; kg=cols[4]; }
+    else if(cols.length>=3 && isDateStr(cols[0])){ fecha=normDate(cols[0]); num=cols[1]; kg=cols[cols.length-1]; }
+    else if(cols.length>=3){ num=cols[0]; kg=cols[cols.length-1]; }
+    else { num=cols[0]; kg=cols[1]; }
+    num=String(num||"").trim(); kg=parseFloat(String(kg||"").replace(",","."));
+    if(!num || !(kg>0)){ errores++; return; }
+    const match=hato.find(a=>a.n && normNum(a.n)===normNum(num));
+    const rec={n: match?match.n:num, nombre: match?(match.nombre||""):"", kg:kg, hora:""};
+    if(!registros[fecha]) registros[fecha]=[];
+    const i=registros[fecha].findIndex(r=>recKey(r)===recKey(rec));
+    if(i>=0) registros[fecha][i]=rec; else registros[fecha].push(rec);
+    count++; dias.add(fecha);
+  });
+  saveReg();
+  return {count, dias:[...dias].sort(), errores};
+}
+function doImport(text){
+  const def=$("#impDate").value||today();
+  const res=importProduccion(text, def);
+  if(res.count===0){ toast("No se cargó nada. Revise el formato."); return; }
+  const diasTxt = res.dias.length===1 ? res.dias[0] : (res.dias.length+" días");
+  toast("✓ "+res.count+" registros ("+diasTxt+")"+(res.errores?(" · "+res.errores+" omitidos"):""));
+  renderToday(); refreshHeader(); $("#impText").value="";
+}
+$("#impPasteBtn").onclick=()=>{ const t=$("#impText").value.trim(); if(!t){ toast("Pegue los datos primero"); return; } doImport(t); };
+$("#impFileBtn").onclick=()=>$("#impFile").click();
+$("#impFile").onchange=(e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>doImport(String(r.result||"")); r.readAsText(f); e.target.value=""; };
+
 /* ================= Exportar ================= */
 function csvEscape(v){ v=String(v); return /[";\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }
 function fmtKg(k){ return String(k).replace(".",","); }   // coma decimal para Excel Colombia
@@ -603,6 +880,24 @@ function refreshExport(){
   $("#expProm").textContent=list.length?(kg/list.length).toFixed(1):"0.0";
 }
 $("#expDate").onchange=refreshExport;
+$("#cmpDate").onchange=renderCompare;
+
+// Fecha de trabajo (registrar en fecha manual o de hoy)
+function setWorkDate(d){
+  workDate=d||today();
+  const esHoy = workDate===today();
+  $("#workBar").classList.toggle("past", !esHoy);
+  $("#wdToday").style.display = esHoy ? "none" : "";
+  renderToday(); refreshHeader();
+}
+$("#wdInput").onchange=e=>setWorkDate(e.target.value);
+$("#wdToday").onclick=()=>{ $("#wdInput").value=today(); setWorkDate(today()); };
+
+// Rangos del gráfico
+$("#rangeBtns").querySelectorAll(".rbtn").forEach(b=>b.onclick=()=>{
+  $("#rangeBtns").querySelectorAll(".rbtn").forEach(x=>x.classList.remove("on")); b.classList.add("on");
+  trendRange=b.getAttribute("data-r"); renderTrendChart();
+});
 
 function csvFile(d){
   const csv="\uFEFF"+buildCSV(d);
@@ -652,7 +947,8 @@ document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
   document.querySelectorAll(".view").forEach(s=>s.classList.remove("on"));
   $("#v-"+v).classList.add("on");
   if(v==="animales") renderAnimals($("#search").value);
-  if(v==="exportar"){ if(!$("#expDate").value) $("#expDate").value=today(); refreshExport(); }
+  if(v==="exportar"){ if(!$("#expDate").value) $("#expDate").value=today(); if(!$("#impDate").value) $("#impDate").value=today(); refreshExport(); }
+  if(v==="tendencia"){ if(!$("#cmpDate").value) $("#cmpDate").value=today(); renderTrendChart(); renderCompare(); }
 });
 let toastT=null;
 function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("on"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("on"),2400); }
@@ -680,6 +976,8 @@ $("#modalNo").onclick=()=>{ if(modalCb) modalCb(false); };
   await load();
   $("#spkBtn").textContent=speakOn?"🔊":"🔇";
   $("#expDate").value=today();
+  $("#cmpDate").value=today();
+  $("#wdInput").value=today();
   renderCapture(); renderToday(); refreshHeader(); refreshExport();
 })();
 </script>
