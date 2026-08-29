@@ -256,18 +256,35 @@ async function saveHato(){ await Store.set("hato", JSON.stringify(hato)); rebuil
 async function saveReg(){ await Store.set("registros", JSON.stringify(registros)); }
 
 /* ================= Voz: hablar (funciona sin internet) ================= */
+let esVoice=null;
+function pickVoice(){
+  if(!("speechSynthesis" in window)) return null;
+  const vs=speechSynthesis.getVoices(); if(!vs||!vs.length) return null;
+  const latam=["es-mx","es-us","es-419","es-co","es-ar","es-cl","es-pe","es-ve"];
+  let best=null,score=-1;
+  vs.forEach(v=>{
+    const lang=(v.lang||"").toLowerCase(); if(!lang.startsWith("es")) return;
+    let s=0; const i=latam.indexOf(lang);
+    if(i>=0) s+=12-i; else s+=1;                                   // prioriza español latino
+    if(/paulina|juan|jorge|diego|luciana|francisca|carlos|rosa/i.test(v.name)) s+=3;
+    if(/enhanced|premium|neural|siri|mejorad/i.test(v.name)) s+=8; // prioriza voces de alta calidad
+    if(s>score){score=s;best=v;}
+  });
+  return best;
+}
+function loadVoice(){ esVoice=pickVoice(); }
+if("speechSynthesis" in window){ speechSynthesis.onvoiceschanged=loadVoice; loadVoice(); }
 function speak(text){
   if(!speakOn || !("speechSynthesis" in window)) return;
   try{
     speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang="es-ES"; u.rate=0.95;
-    const v = speechSynthesis.getVoices().find(v=>/es/i.test(v.lang));
-    if(v) u.voice=v;
+    if(!esVoice) loadVoice();
+    const u=new SpeechSynthesisUtterance(text);
+    if(esVoice){ u.voice=esVoice; u.lang=esVoice.lang; } else { u.lang="es-MX"; }
+    u.rate=1.0; u.pitch=1.02;
     speechSynthesis.speak(u);
   }catch(e){}
 }
-if("speechSynthesis" in window){ speechSynthesis.onvoiceschanged=()=>{}; }
 
 /* ================= Voz: dictado (necesita internet) ================= */
 const UNI={cero:0,uno:1,un:1,una:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9,diez:10,once:11,doce:12,trece:13,catorce:14,quince:15,dieciseis:16,"dieciséis":16,diecisiete:17,dieciocho:18,diecinueve:19,veinte:20,veintiuno:21,veintiuna:21,veintidos:22,"veintidós":22,veintitres:23,"veintitrés":23,veinticuatro:24,veinticinco:25,veintiseis:26,"veintiséis":26,veintisiete:27,veintiocho:28,veintinueve:29};
@@ -296,26 +313,51 @@ function parseKg_es(str){
   }
   const iv=parseInt_es(s); return iv!=null?iv:null;
 }
-let recog=null, recActive=false;
+function normText(s){ return (s||"").toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9ñ ]/g," ").replace(/\s+/g," ").trim(); }
+function matchCowByName(txt){
+  const t=normText(txt); if(!t) return null;
+  let m=hato.find(a=>a.nombre && normText(a.nombre)===t); if(m) return m;
+  if(t.length>=3){
+    m=hato.find(a=>a.nombre && (normText(a.nombre).split(" ").includes(t) || t.split(" ").includes(normText(a.nombre))));
+    if(m) return m;
+    m=hato.find(a=>a.nombre && (normText(a.nombre).startsWith(t) || t.startsWith(normText(a.nombre))));
+    if(m) return m;
+  }
+  return null;
+}
+let recog=null, recActive=false, voiceTimer=null;
+function stopVoice(){ try{ recog&&recog.abort(); }catch(e){} recActive=false; if(micKey) micKey.classList.remove("rec"); clearTimeout(voiceTimer); }
+function handleVoiceResult(alts){
+  if(phase==="vaca"){
+    for(const t of alts){ const c=matchCowByName(t); if(c){ buf=String(c.n); renderCapture(); speak(c.nombre||("vaca "+c.n)); return; } }
+    for(const t of alts){ const n=parseInt_es(t); if(n!=null){ buf=String(n); renderCapture(); return; } }
+    toast('No entendí: "'+(alts[0]||"")+'"'); speak("No entendí. Repita o use los botones.");
+  } else {
+    for(const t of alts){ const k=parseKg_es(t); if(k!=null){ buf=String(k); renderCapture(); return; } }
+    toast('No entendí: "'+(alts[0]||"")+'"'); speak("No entendí. Repita o use los botones.");
+  }
+}
 function startVoice(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR){ toast("Este teléfono no tiene dictado por voz"); return; }
+  if(!SR){ toast("Este teléfono no permite dictado por voz"); return; }
+  if(recActive){ stopVoice(); return; }                 // segundo toque = cancelar / destrabar
   try{
-    recog=new SR(); recog.lang="es-CO"; recog.interimResults=false; recog.maxAlternatives=1;
-    recActive=true; micKey.classList.add("rec");
+    recog=new SR(); recog.lang="es-MX"; recog.interimResults=false; recog.maxAlternatives=4;
+    recActive=true; if(micKey) micKey.classList.add("rec");
+    clearTimeout(voiceTimer); voiceTimer=setTimeout(()=>{ try{recog&&recog.stop();}catch(e){} }, 7000);
     recog.onresult=(e)=>{
-      const txt=e.results[0][0].transcript||"";
-      if(phase==="vaca"){ const n=parseInt_es(txt); if(n!=null){ buf=String(n); renderCapture(); } else { toast("No entendí: “"+txt+"”"); } }
-      else { const k=parseKg_es(txt); if(k!=null){ buf=String(k); renderCapture(); } else { toast("No entendí: “"+txt+"”"); } }
+      const alts=[]; for(let i=0;i<e.results[0].length;i++) alts.push(e.results[0][i].transcript||"");
+      handleVoiceResult(alts);
     };
     recog.onerror=(e)=>{
-      if(e.error==="not-allowed"||e.error==="service-not-allowed")
-        toast("El micrófono se activa abriendo la app en Chrome del celular");
-      else toast("No se pudo escuchar. Use los botones.");
+      recActive=false; if(micKey) micKey.classList.remove("rec"); clearTimeout(voiceTimer);
+      if(e.error==="not-allowed"||e.error==="service-not-allowed") toast("Toque Permitir para usar el micrófono");
+      else if(e.error==="no-speech") toast("No escuché nada, intente de nuevo");
+      else toast("El micrófono no respondió, toque de nuevo");
     };
-    recog.onend=()=>{ recActive=false; micKey&&micKey.classList.remove("rec"); };
+    recog.onend=()=>{ recActive=false; if(micKey) micKey.classList.remove("rec"); clearTimeout(voiceTimer); };
     recog.start();
-  }catch(e){ recActive=false; micKey&&micKey.classList.remove("rec"); toast("El micrófono no está disponible aquí"); }
+  }catch(e){ recActive=false; if(micKey) micKey.classList.remove("rec"); toast("El micrófono no respondió, toque de nuevo"); }
 }
 
 /* ================= Captura ================= */
