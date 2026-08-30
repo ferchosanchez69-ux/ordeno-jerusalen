@@ -131,11 +131,25 @@
 
   /* ---- Navegación inferior ---- */
   nav{position:fixed; bottom:0; left:0; right:0; background:#fff; border-top:2px solid var(--line);
-    display:grid; grid-template-columns:repeat(4,1fr); padding:6px 6px calc(6px + env(safe-area-inset-bottom));}
-  nav button{background:none; padding:8px 4px; border-radius:14px; display:flex; flex-direction:column; align-items:center; gap:2px; color:var(--muted); font-size:13px; font-weight:700;}
-  nav button .i{font-size:26px;}
+    display:grid; grid-template-columns:repeat(5,1fr); padding:6px 4px calc(6px + env(safe-area-inset-bottom));}
+  nav button{background:none; padding:8px 2px; border-radius:14px; display:flex; flex-direction:column; align-items:center; gap:2px; color:var(--muted); font-size:11px; font-weight:700;}
+  nav button .i{font-size:23px;}
   nav button.on{color:var(--green-d);}
   nav button.on .i{transform:translateY(-1px);}
+
+  .rep{background:var(--card); border:2px solid var(--line); border-radius:16px; padding:14px; margin-bottom:14px;}
+  .rep h3{margin:0 0 10px; font-size:17px;}
+  .rep.warn{border-color:var(--ocher);} .rep.warn h3{color:var(--ocher);}
+  .kpis{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .kpi{background:#F6F4EF; border-radius:12px; padding:10px 12px;}
+  .kpi b{display:block; font-size:21px; color:var(--green-d);}
+  .kpi span{font-size:12px; color:var(--muted);}
+  .repitem{padding:9px 0; border-bottom:1px solid var(--line); font-size:15px;}
+  .repitem:last-child{border-bottom:none;}
+  .rep .sub{font-size:12.5px; color:var(--muted); margin:4px 0;}
+  .repitem .sub{display:block; margin-top:2px;}
+  .reco{font-size:14.5px; line-height:1.5; padding-left:18px; margin:0;}
+  .reco li{margin-bottom:9px;}
 
   .toast{position:fixed; left:50%; bottom:110px; transform:translateX(-50%) translateY(20px);
     background:var(--ink); color:#fff; padding:12px 20px; border-radius:14px; font-size:16px; font-weight:700;
@@ -276,6 +290,17 @@
     <div id="cmpNote" class="cmpnote"></div>
     <div id="cmpList"></div>
   </section>
+
+  <!-- ====== INFORME ====== -->
+  <section class="view" id="v-informe">
+    <div class="rangebtns" id="infRange">
+      <button class="rbtn" data-r="7">7 días</button>
+      <button class="rbtn on" data-r="30">30 días</button>
+      <button class="rbtn" data-r="all">Todo</button>
+    </div>
+    <div id="informe"></div>
+    <button class="bigbtn wa" id="shareInforme" style="display:none;">📲 Compartir informe</button>
+  </section>
 </main>
 
 <nav>
@@ -283,6 +308,7 @@
   <button data-v="animales"><span class="i">🐄</span>Animales</button>
   <button data-v="exportar"><span class="i">📤</span>Exportar</button>
   <button data-v="tendencia"><span class="i">📈</span>Tendencia</button>
+  <button data-v="informe"><span class="i">📋</span>Informe</button>
 </nav>
 
 <div class="toast" id="toast"></div>
@@ -811,6 +837,105 @@ function etiquetaDesdeKey(k, prevRecs){
   return r?(r.nombre||("Vaca "+r.n)):k;
 }
 
+/* ================= Informe ejecutivo ================= */
+let infRange="30";
+function mean(a){ return a.length? a.reduce((s,x)=>s+x,0)/a.length : 0; }
+function slopeArr(v){ const n=v.length; if(n<2) return 0; let sx=0,sy=0,sxy=0,sxx=0; v.forEach((y,i)=>{sx+=i;sy+=y;sxy+=i*y;sxx+=i*i;}); const d=n*sxx-sx*sx; return d?(n*sxy-sx*sy)/d:0; }
+function infPeriod(){ const ds=sortedDates(); return infRange==="all"?ds:ds.slice(-parseInt(infRange)); }
+function infStats(dates){
+  const cows={};
+  dates.forEach(d=>{ (registros[d]||[]).forEach(r=>{ const k=recKey(r); if(!cows[k]) cows[k]={n:r.n,nombre:r.nombre||"",vals:[]}; if(r.nombre&&!cows[k].nombre)cows[k].nombre=r.nombre; cows[k].vals.push(+r.kg||0); }); });
+  const list=Object.values(cows);
+  list.forEach(c=>{
+    const v=c.vals; c.days=v.length; c.avg=mean(v); c.min=Math.min(...v); c.max=Math.max(...v); c.last=v[v.length-1];
+    c.sd=Math.sqrt(mean(v.map(x=>(x-c.avg)*(x-c.avg)))); c.cv=c.avg>0?c.sd/c.avg:0;
+    c.base=v.length>1?mean(v.slice(0,-1)):c.avg; c.dropPct=c.base>0?(c.last-c.base)/c.base:0;
+    c.slope=slopeArr(v);
+    c.tag=c.nombre?(c.nombre+" ("+c.n+")"):("N.º "+c.n);
+  });
+  const herdAvg=mean(list.map(c=>c.avg));
+  const daily=dates.map(d=>({date:d, tot:(registros[d]||[]).reduce((s,r)=>s+(+r.kg||0),0), n:(registros[d]||[]).length}));
+  const herdSlope=slopeArr(daily.map(x=>x.tot));
+  return {list,herdAvg,daily,herdSlope,dates};
+}
+function renderInforme(){
+  const dates=infPeriod(); const box=$("#informe");
+  if(dates.length<2){ box.innerHTML='<div class="empty">Se necesitan al menos 2 días con datos para el informe. Registre o importe más días.</div>'; $("#shareInforme").style.display="none"; return; }
+  const S=infStats(dates); const {list,herdAvg,daily,herdSlope}=S;
+  const totProm=mean(daily.map(x=>x.tot)); const vacasProm=Math.round(mean(daily.map(x=>x.n)));
+  const tend = herdSlope>0.3?'<span class="up">▲ subiendo</span>':herdSlope<-0.3?'<span class="down">▼ bajando</span>':'<span class="flat">estable</span>';
+  const caidas=list.filter(c=>c.days>=3 && c.dropPct<=-0.2 && c.base>=2).sort((a,b)=>a.dropPct-b.dropPct);
+  const irreg=list.filter(c=>c.days>=5 && c.cv>=0.30).sort((a,b)=>b.cv-a.cv);
+  const descarte=list.filter(c=>c.days>=4 && c.avg<0.7*herdAvg).sort((a,b)=>a.avg-b.avg);
+  const top=[...list].sort((a,b)=>b.avg-a.avg).slice(0,5);
+  const diasCaida=[];
+  for(let i=2;i<daily.length;i++){ const base=mean(daily.slice(Math.max(0,i-3),i).map(x=>x.tot)); if(base>0 && daily[i].tot<0.85*base) diasCaida.push({date:daily[i].date, tot:daily[i].tot, base}); }
+
+  let h="";
+  h+='<div class="rep"><h3>📊 Resumen del hato</h3><div class="kpis">'
+    +'<div class="kpi"><b>'+totProm.toFixed(1)+' kg</b><span>promedio diario del hato</span></div>'
+    +'<div class="kpi"><b>'+herdAvg.toFixed(1)+' kg</b><span>promedio por vaca/día</span></div>'
+    +'<div class="kpi"><b>'+vacasProm+'</b><span>vacas en ordeño (prom.)</span></div>'
+    +'<div class="kpi"><b>'+tend+'</b><span>tendencia del hato</span></div></div>'
+    +'<p class="sub" style="margin-top:10px;">Periodo: '+dates[0]+' a '+dates[dates.length-1]+' ('+dates.length+' días).</p></div>';
+
+  h+='<div class="rep warn"><h3>⚠️ Alertas — revisar pronto</h3>'; let any=false;
+  if(caidas.length){ any=true; h+='<p class="sub">Caídas fuertes (posible mastitis, celo, enfermedad, golpe o cambio de alimento):</p>';
+    caidas.slice(0,8).forEach(c=>h+='<div class="repitem"><b>'+c.tag+'</b> — bajó '+Math.round(-c.dropPct*100)+'% (de '+c.base.toFixed(1)+' a '+c.last.toFixed(1)+' kg)</div>'); }
+  if(diasCaida.length){ any=true; h+='<p class="sub" style="margin-top:8px;">Días de caída general del hato (revisar alimento, agua, calor, manejo o personal):</p>';
+    diasCaida.slice(-5).forEach(d=>h+='<div class="repitem"><b>'+d.date+'</b> — '+d.tot.toFixed(0)+' kg vs '+d.base.toFixed(0)+' kg esperados</div>'); }
+  if(irreg.length){ any=true; h+='<p class="sub" style="margin-top:8px;">Producción irregular (revisar rutina de ordeño, vaciado completo, salud):</p>';
+    irreg.slice(0,6).forEach(c=>h+='<div class="repitem"><b>'+c.tag+'</b> — varía mucho ('+c.min.toFixed(1)+'–'+c.max.toFixed(1)+' kg)</div>'); }
+  if(!any) h+='<div class="repitem">Sin alertas relevantes en el periodo. 👍</div>';
+  h+='</div>';
+
+  h+='<div class="rep"><h3>📉 Candidatas a descarte</h3>';
+  if(descarte.length){
+    h+='<p class="sub">Producen por debajo del 70% del promedio del hato ('+herdAvg.toFixed(1)+' kg/vaca):</p>';
+    descarte.slice(0,10).forEach(c=>h+='<div class="repitem"><b>'+c.tag+'</b><span class="sub">promedia '+c.avg.toFixed(1)+' kg/día en '+c.days+' días — '+Math.round(c.avg/herdAvg*100)+'% del hato</span></div>');
+    h+='<p class="sub" style="margin-top:8px;">⚠️ La producción no es el único criterio. Antes de descartar, verifique <b>etapa de lactancia</b> (al final de lactancia es normal producir poco), <b>edad, preñez, sanidad y condición corporal</b>. Descarte a las de baja producción <b>persistente</b> y sin causa corregible.</p>';
+  } else h+='<div class="repitem">Ninguna vaca cae por debajo del umbral. 👍</div>';
+  h+='</div>';
+
+  h+='<div class="rep"><h3>🏆 Mejores productoras</h3>';
+  top.forEach((c,i)=>h+='<div class="repitem"><b>'+(i+1)+'. '+c.tag+'</b> — '+c.avg.toFixed(1)+' kg/día</div>');
+  h+='</div>';
+
+  h+='<div class="rep"><h3>✅ Recomendaciones</h3><ul class="reco">';
+  const recs=[];
+  if(caidas.length) recs.push('Revise físicamente a las '+caidas.length+' vaca(s) con caída fuerte: palpe la ubre y haga prueba de mastitis (CMT), observe celo, cojeras o heridas, y confirme que coman bien.');
+  if(diasCaida.length) recs.push('En los días de caída general, revise si faltó forraje o agua, hubo mucho calor, o cambió el ordeñador o la rutina. La caída de todo el hato casi siempre es de manejo, no de las vacas.');
+  if(irreg.length) recs.push('Estandarice la rutina de ordeño (mismo horario, buen estímulo, vaciado completo). La producción irregular suele venir de ordeño incompleto o de problemas de salud.');
+  if(descarte.length) recs.push('Arme una lista de descarte con las de baja producción persistente, cruzándola con edad, número de partos y preñez. Una vaca que no cubre su costo de mantenimiento resta rentabilidad al hato.');
+  recs.push('Registre el ordeño <b>todos los días</b>: entre más continua la información, más confiables son estas alertas y tendencias.');
+  recs.push('Compare parejo por <b>etapa de lactancia</b>: no es lo mismo una recién parida que una próxima al secado.');
+  recs.forEach(r=>h+='<li>'+r+'</li>'); h+='</ul></div>';
+
+  box.innerHTML=h;
+  $("#shareInforme").style.display="";
+  window._infText=buildInfText({totProm,herdAvg,vacasProm,herdSlope,caidas,irreg,descarte,top,diasCaida,dates});
+}
+function buildInfText(x){
+  const L=[];
+  L.push("INFORME DE ORDENO — Finca Jerusalen");
+  L.push("Periodo: "+x.dates[0]+" a "+x.dates[x.dates.length-1]+" ("+x.dates.length+" dias)");
+  L.push(""); L.push("RESUMEN");
+  L.push("- Promedio diario del hato: "+x.totProm.toFixed(1)+" kg");
+  L.push("- Promedio por vaca/dia: "+x.herdAvg.toFixed(1)+" kg");
+  L.push("- Vacas en ordeno (prom.): "+x.vacasProm);
+  L.push("- Tendencia: "+(x.herdSlope>0.3?"subiendo":x.herdSlope<-0.3?"bajando":"estable"));
+  if(x.caidas.length){ L.push(""); L.push("ALERTAS - CAIDAS (revisar salud/celo):"); x.caidas.slice(0,8).forEach(c=>L.push("- "+c.tag+": bajo "+Math.round(-c.dropPct*100)+"% (a "+c.last.toFixed(1)+" kg)")); }
+  if(x.diasCaida.length){ L.push(""); L.push("DIAS DE CAIDA DEL HATO:"); x.diasCaida.slice(-5).forEach(d=>L.push("- "+d.date+": "+d.tot.toFixed(0)+" kg")); }
+  if(x.irreg.length){ L.push(""); L.push("PRODUCCION IRREGULAR:"); x.irreg.slice(0,6).forEach(c=>L.push("- "+c.tag+": "+c.min.toFixed(1)+"-"+c.max.toFixed(1)+" kg")); }
+  if(x.descarte.length){ L.push(""); L.push("CANDIDATAS A DESCARTE:"); x.descarte.slice(0,10).forEach(c=>L.push("- "+c.tag+": "+c.avg.toFixed(1)+" kg/dia ("+Math.round(c.avg/x.herdAvg*100)+"% del hato)")); L.push("(Verificar lactancia, edad, prenez y salud antes de decidir.)"); }
+  L.push(""); L.push("MEJORES PRODUCTORAS:");
+  x.top.forEach((c,i)=>L.push("- "+(i+1)+". "+c.tag+": "+c.avg.toFixed(1)+" kg/dia"));
+  return L.join("\n");
+}
+$("#infRange").querySelectorAll(".rbtn").forEach(b=>b.onclick=()=>{ $("#infRange").querySelectorAll(".rbtn").forEach(x=>x.classList.remove("on")); b.classList.add("on"); infRange=b.getAttribute("data-r"); renderInforme(); });
+$("#shareInforme").onclick=async()=>{ const t=window._infText||""; if(!t) return; try{ if(navigator.share){ await navigator.share({title:"Informe de ordeño", text:t}); } else { await navigator.clipboard.writeText(t); toast("Informe copiado"); } }catch(e){} };
+
+
 /* ================= Importar producción ================= */
 function splitCols(line){
   if(line.includes("\t")) return line.split("\t").map(s=>s.trim());
@@ -949,6 +1074,7 @@ document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
   if(v==="animales") renderAnimals($("#search").value);
   if(v==="exportar"){ if(!$("#expDate").value) $("#expDate").value=today(); if(!$("#impDate").value) $("#impDate").value=today(); refreshExport(); }
   if(v==="tendencia"){ if(!$("#cmpDate").value) $("#cmpDate").value=today(); renderTrendChart(); renderCompare(); }
+  if(v==="informe"){ renderInforme(); }
 });
 let toastT=null;
 function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("on"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("on"),2400); }
