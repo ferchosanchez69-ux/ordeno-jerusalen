@@ -224,6 +224,14 @@
     </div>
 
     <div class="card">
+      <h2>Importar hato completo</h2>
+      <p>Cargue el archivo con fecha de parto, número de partos y estado reproductivo (exportado de Software Ganadero). Actualiza los animales por número y calcula los Días en Leche.</p>
+      <button class="mini" id="hatoFileBtn" style="height:52px; width:100%;">📄 Subir Excel/CSV del hato</button>
+      <input type="file" id="hatoFile" accept=".csv,.txt,text/csv,text/plain" style="display:none;">
+      <p style="font-size:12px; color:var(--muted); margin-top:8px;">Columnas: Numero, Nombre, FechaParto, Partos, Repro, FechaServicio. Guarde su Excel como CSV antes de subirlo.</p>
+    </div>
+
+    <div class="card">
       <h2>Hato lechero (<span id="listCount">0</span>)</h2>
       <input id="search" placeholder="Buscar por número o nombre…" style="margin-bottom:12px;">
       <div class="list" id="animalList"></div>
@@ -597,7 +605,12 @@ function renderAnimals(filter=""){
   el.innerHTML=rows.map(a=>{
     const key=encodeURIComponent(cowKey(a));
     const num = a.n ? a.n : "🔤";
-    return '<div class="animal"><div class="n">'+num+'</div><div class="nm">'+(a.nombre||"<i style=\'color:#9aa38f\'>sin nombre</i>")+'</div>'+
+    const info=[]; const dl=delDias(a);
+    if(dl!=null) info.push(dl+" DEL");
+    if(a.partos) info.push(a.partos+(a.partos==1?" parto":" partos"));
+    if(a.repro) info.push(a.repro);
+    const infoHtml = info.length ? '<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+info.join(" · ")+'</div>' : '';
+    return '<div class="animal"><div class="n">'+num+'</div><div class="nm">'+(a.nombre||"<i style=\'color:#9aa38f\'>sin nombre</i>")+infoHtml+'</div>'+
       '<button class="ed" data-ed="'+key+'">✏️</button><button class="rm" data-rm="'+key+'">🗑️</button></div>';
   }).join("");
   el.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{
@@ -667,13 +680,67 @@ $("#restoreFile").onchange=(e)=>{
       const obj=JSON.parse(r.result);
       const arr=Array.isArray(obj)?obj:(obj.hato||[]);
       let added=0;
-      arr.forEach(a=>{ if(!a) return; const cand={n:a.n?String(a.n):"", nombre:a.nombre||""}; if((cand.n||cand.nombre) && !hato.some(x=>cowKey(x)===cowKey(cand))){ hato.push(cand); added++; } });
+      arr.forEach(a=>{ if(!a) return; const cand={n:a.n?String(a.n):"", nombre:a.nombre||"", parto:a.parto||"", partos:a.partos||"", repro:a.repro||"", servicio:a.servicio||""}; if((cand.n||cand.nombre) && !hato.some(x=>cowKey(x)===cowKey(cand))){ hato.push(cand); added++; } });
       saveHato(); renderAnimals($("#search").value);
       toast(added?("✓ Restauradas "+added+" vacas"):"El hato ya estaba al día");
     }catch(err){ toast("El archivo no es un respaldo válido"); }
   };
   r.readAsText(f); e.target.value="";
 };
+
+/* ================= Datos del hato: fechas y Días en Leche ================= */
+function parseFecha(s){
+  if(!s) return null; s=String(s).trim();
+  let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if(m) return new Date(+m[1],+m[2]-1,+m[3]);
+  m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/); if(m){ let y=+m[3]; if(y<100)y+=2000; return new Date(y,+m[2]-1,+m[1]); }
+  const d=new Date(s); return isNaN(d)?null:d;
+}
+function diasDesde(fecha){ const d=parseFecha(fecha); if(!d) return null; return Math.floor((Date.now()-d.getTime())/86400000); }
+function delDias(a){ return a && a.parto ? diasDesde(a.parto) : null; }
+function etapaLactancia(del){
+  if(del==null) return "";
+  if(del<0) return "por parir";
+  if(del<=100) return "temprana";
+  if(del<=200) return "media";
+  if(del<=305) return "tardía";
+  return "debería estar seca";
+}
+
+/* ================= Importar hato completo (con datos reproductivos) ================= */
+$("#hatoFileBtn").onclick=()=>$("#hatoFile").click();
+$("#hatoFile").onchange=(e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ const res=importHatoCSV(String(r.result||"")); if(res.error){ toast("No encontré la columna de número. Revise el encabezado."); return; } toast("✓ "+res.upd+" actualizadas, "+res.add+" nuevas"); renderAnimals($("#search").value); }; r.readAsText(f); e.target.value=""; };
+function importHatoCSV(text){
+  const lines=text.split(/\r?\n/).map(l=>l.replace(/\uFEFF/g,"")).filter(l=>l.trim());
+  if(!lines.length) return {upd:0,add:0};
+  const H0=lines[0];
+  const delim = H0.includes("\t")?"\t":H0.includes(";")?";":",";
+  const headers=H0.split(delim).map(s=>normText(s));
+  const col=(pats)=>{ for(let i=0;i<headers.length;i++){ if(pats.some(p=>p.test(headers[i]))) return i; } return -1; };
+  const iNum=col([/^numero$/,/numero/,/arete/,/^num/,/^id$/]);
+  const iNom=col([/nombre/]);
+  const iParto=col([/fecha ?de ?parto/,/fechaparto/,/ultimo ?parto/,/^parto$/]);
+  const iPartos=col([/^partos$/,/num.*partos/,/n.*partos/,/lactancia/]);
+  const iRepro=col([/repro/,/estado ?repro/,/gestac/,/prene|vacia|servida/,/^estado$/]);
+  const iServ=col([/servicio/,/insemin|monta/]);
+  if(iNum<0) return {error:true};
+  let upd=0,add=0;
+  for(let li=1;li<lines.length;li++){
+    const c=lines[li].split(delim).map(s=>s.trim().replace(/^[;,]+|[;,]+$/g,""));
+    const num=(c[iNum]||"").trim(); if(!num) continue;
+    const rec={
+      nombre: iNom>=0?(c[iNom]||""):"",
+      parto: iParto>=0?normDate(c[iParto]||""):"",
+      partos: iPartos>=0?String(c[iPartos]||"").replace(/[^\d]/g,""):"",
+      repro: iRepro>=0?(c[iRepro]||""):"",
+      servicio: iServ>=0?normDate(c[iServ]||""):""
+    };
+    const ex=hato.find(a=>a.n && normNum(a.n)===normNum(num));
+    if(ex){ if(rec.nombre)ex.nombre=rec.nombre; if(rec.parto)ex.parto=rec.parto; if(rec.partos)ex.partos=rec.partos; if(rec.repro)ex.repro=rec.repro; if(rec.servicio)ex.servicio=rec.servicio; upd++; }
+    else { hato.push({n:num, nombre:rec.nombre, parto:rec.parto, partos:rec.partos, repro:rec.repro, servicio:rec.servicio}); add++; }
+  }
+  saveHato();
+  return {upd,add};
+}
 
 /* ================= Tendencia ================= */
 function sortedDates(){ return Object.keys(registros).filter(d=>(registros[d]||[]).length).sort(); }
@@ -846,17 +913,23 @@ function infStats(dates){
   const cows={};
   dates.forEach(d=>{ (registros[d]||[]).forEach(r=>{ const k=recKey(r); if(!cows[k]) cows[k]={n:r.n,nombre:r.nombre||"",vals:[]}; if(r.nombre&&!cows[k].nombre)cows[k].nombre=r.nombre; cows[k].vals.push(+r.kg||0); }); });
   const list=Object.values(cows);
+  const hByNum={}; hato.forEach(a=>{ if(a.n) hByNum[normNum(a.n)]=a; });
   list.forEach(c=>{
     const v=c.vals; c.days=v.length; c.avg=mean(v); c.min=Math.min(...v); c.max=Math.max(...v); c.last=v[v.length-1];
     c.sd=Math.sqrt(mean(v.map(x=>(x-c.avg)*(x-c.avg)))); c.cv=c.avg>0?c.sd/c.avg:0;
     c.base=v.length>1?mean(v.slice(0,-1)):c.avg; c.dropPct=c.base>0?(c.last-c.base)/c.base:0;
     c.slope=slopeArr(v);
     c.tag=c.nombre?(c.nombre+" ("+c.n+")"):("N.º "+c.n);
+    const a=hByNum[normNum(c.n)];
+    c.del = a?delDias(a):null; c.partos = a&&a.partos?+a.partos:null; c.repro = a?(a.repro||""):"";
+    c.etapa = etapaLactancia(c.del); c.vacia = /vac/i.test(c.repro);
+    c.abiertos = (c.vacia && a && a.parto)? delDias(a): null;
   });
+  const conParto=list.filter(c=>c.del!=null).length;
   const herdAvg=mean(list.map(c=>c.avg));
   const daily=dates.map(d=>({date:d, tot:(registros[d]||[]).reduce((s,r)=>s+(+r.kg||0),0), n:(registros[d]||[]).length}));
   const herdSlope=slopeArr(daily.map(x=>x.tot));
-  return {list,herdAvg,daily,herdSlope,dates};
+  return {list,herdAvg,daily,herdSlope,dates,conParto};
 }
 function renderInforme(){
   const dates=infPeriod(); const box=$("#informe");
@@ -892,13 +965,40 @@ function renderInforme(){
   h+='<div class="rep"><h3>📉 Candidatas a descarte</h3>';
   if(descarte.length){
     h+='<p class="sub">Producen por debajo del 70% del promedio del hato ('+herdAvg.toFixed(1)+' kg/vaca):</p>';
-    descarte.slice(0,10).forEach(c=>h+='<div class="repitem"><b>'+c.tag+'</b><span class="sub">promedia '+c.avg.toFixed(1)+' kg/día en '+c.days+' días — '+Math.round(c.avg/herdAvg*100)+'% del hato</span></div>');
-    h+='<p class="sub" style="margin-top:8px;">⚠️ La producción no es el único criterio. Antes de descartar, verifique <b>etapa de lactancia</b> (al final de lactancia es normal producir poco), <b>edad, preñez, sanidad y condición corporal</b>. Descarte a las de baja producción <b>persistente</b> y sin causa corregible.</p>';
+    // clasificar con contexto de lactancia
+    descarte.slice(0,12).forEach(c=>{
+      let ctx="", cls="";
+      if(c.del==null){ ctx='sin fecha de parto cargada'; }
+      else if(c.partos===1){ ctx=c.del+' DEL · primeriza — dele tiempo'; }
+      else if(c.del>250){ ctx=c.del+' DEL · '+c.etapa+' — baja normal, planee secado'; }
+      else if(c.del>=60){ ctx=c.del+' DEL · '+c.etapa+' — <b>debería producir más: revisar/descartar</b>'; cls=' style="color:var(--ocher)"'; }
+      else { ctx=c.del+' DEL · recién parida — vigilar'; }
+      h+='<div class="repitem"><b'+cls+'>'+c.tag+'</b><span class="sub">'+c.avg.toFixed(1)+' kg/día ('+Math.round(c.avg/herdAvg*100)+'% del hato) · '+ctx+'</span></div>';
+    });
+    if(S.conParto===0) h+='<p class="sub" style="margin-top:8px;">📌 Cargue la <b>fecha de parto</b> (pestaña Animales → Importar hato) para saber si la baja producción es por etapa de lactancia o es real.</p>';
+    else h+='<p class="sub" style="margin-top:8px;">⚠️ Descarte solo la baja producción <b>persistente y sin causa corregible</b>; confirme preñez, sanidad y condición corporal en campo.</p>';
   } else h+='<div class="repitem">Ninguna vaca cae por debajo del umbral. 👍</div>';
   h+='</div>';
 
+  // Reproducción a revisar (vacías con muchos días abiertos)
+  const reproMal=list.filter(c=>c.vacia && c.abiertos!=null && c.abiertos>150).sort((a,b)=>b.abiertos-a.abiertos);
+  if(reproMal.length){
+    h+='<div class="rep warn"><h3>🐂 Reproducción — vacas problema</h3>';
+    h+='<p class="sub">Vacías con muchos días abiertos (candidatas fuertes a descarte si además producen poco):</p>';
+    reproMal.slice(0,10).forEach(c=>h+='<div class="repitem"><b>'+c.tag+'</b><span class="sub">vacía · ~'+c.abiertos+' días abiertos · '+c.avg.toFixed(1)+' kg/día</span></div>');
+    h+='</div>';
+  }
+  // Próximas a secar
+  const secar=list.filter(c=>c.del!=null && c.del>=305).sort((a,b)=>b.del-a.del);
+  if(secar.length){
+    h+='<div class="rep"><h3>💧 Revisar para secado</h3>';
+    h+='<p class="sub">Pasan los 305 días en leche — evalúe secarlas (idealmente ~60 días antes del próximo parto):</p>';
+    secar.slice(0,10).forEach(c=>h+='<div class="repitem"><b>'+c.tag+'</b><span class="sub">'+c.del+' DEL · '+c.avg.toFixed(1)+' kg/día'+(c.repro?' · '+c.repro:'')+'</span></div>');
+    h+='</div>';
+  }
+
   h+='<div class="rep"><h3>🏆 Mejores productoras</h3>';
-  top.forEach((c,i)=>h+='<div class="repitem"><b>'+(i+1)+'. '+c.tag+'</b> — '+c.avg.toFixed(1)+' kg/día</div>');
+  top.forEach((c,i)=>h+='<div class="repitem"><b>'+(i+1)+'. '+c.tag+'</b> — '+c.avg.toFixed(1)+' kg/día'+(c.del!=null?' · '+c.del+' DEL':'')+'</div>');
   h+='</div>';
 
   h+='<div class="rep"><h3>✅ Recomendaciones</h3><ul class="reco">';
