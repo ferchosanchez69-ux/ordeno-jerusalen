@@ -980,12 +980,25 @@ function renderInforme(){
   } else h+='<div class="repitem">Ninguna vaca cae por debajo del umbral. 👍</div>';
   h+='</div>';
 
-  // Reproducción a revisar (vacías con muchos días abiertos)
-  const reproMal=list.filter(c=>c.vacia && c.abiertos!=null && c.abiertos>150).sort((a,b)=>b.abiertos-a.abiertos);
+  // Reproducción / descarte reproductivo — sobre TODO el hato (incluye vacas que no están en ordeño)
+  const milkNums=new Set(list.map(c=>normNum(c.n)));
+  const avgByNum={}; list.forEach(c=>{ avgByNum[normNum(c.n)]=c.avg; });
+  const reproAll=hato.filter(a=>a.parto && /vac/i.test(a.repro||"")).map(a=>({ n:a.n, nombre:a.nombre||("Vaca "+a.n), partos:a.partos?+a.partos:null, ab:diasDesde(a.parto), enOrdeno:milkNums.has(normNum(a.n)), avg:avgByNum[normNum(a.n)] })).filter(x=>x.ab!=null);
+  const reproErr=reproAll.filter(x=>x.ab>1500).sort((a,b)=>b.ab-a.ab);
+  const reproMal=reproAll.filter(x=>x.ab>150 && x.ab<=1500).sort((a,b)=>b.ab-a.ab);
   if(reproMal.length){
-    h+='<div class="rep warn"><h3>🐂 Reproducción — vacas problema</h3>';
-    h+='<p class="sub">Vacías con muchos días abiertos (candidatas fuertes a descarte si además producen poco):</p>';
-    reproMal.slice(0,10).forEach(c=>h+='<div class="repitem"><b>'+c.tag+'</b><span class="sub">vacía · ~'+c.abiertos+' días abiertos · '+c.avg.toFixed(1)+' kg/día</span></div>');
+    h+='<div class="rep warn"><h3>🐂 Descarte / problema reproductivo</h3>';
+    h+='<p class="sub">Vacas <b>vacías</b> con muchos días abiertos — de todo el hato, estén o no en ordeño. Las que llevan mucho sin preñarse y ya no producen son las candidatas más claras a descarte:</p>';
+    reproMal.slice(0,12).forEach(c=>{
+      const prod = c.enOrdeno ? (c.avg!=null?c.avg.toFixed(1)+' kg/día':'en ordeño') : 'sin producción (no está en ordeño)';
+      const fuerte = (!c.enOrdeno && c.ab>250) ? ' style="color:var(--ocher)"' : '';
+      h+='<div class="repitem"><b'+fuerte+'>'+c.nombre+' ('+c.n+')</b><span class="sub">~'+c.ab+' días abiertos · '+(c.partos?c.partos+' partos · ':'')+prod+'</span></div>';
+    });
+    h+='</div>';
+  }
+  if(reproErr.length){
+    h+='<div class="rep"><h3>📌 Revisar fecha de parto</h3><p class="sub">Estas dan un número imposible de días abiertos — casi seguro hay un error de digitación en la fecha:</p>';
+    reproErr.forEach(c=>h+='<div class="repitem"><b>'+c.nombre+' ('+c.n+')</b><span class="sub">'+c.ab+' días abiertos — corrija la fecha de parto</span></div>');
     h+='</div>';
   }
   // Próximas a secar
@@ -1007,13 +1020,14 @@ function renderInforme(){
   if(diasCaida.length) recs.push('En los días de caída general, revise si faltó forraje o agua, hubo mucho calor, o cambió el ordeñador o la rutina. La caída de todo el hato casi siempre es de manejo, no de las vacas.');
   if(irreg.length) recs.push('Estandarice la rutina de ordeño (mismo horario, buen estímulo, vaciado completo). La producción irregular suele venir de ordeño incompleto o de problemas de salud.');
   if(descarte.length) recs.push('Arme una lista de descarte con las de baja producción persistente, cruzándola con edad, número de partos y preñez. Una vaca que no cubre su costo de mantenimiento resta rentabilidad al hato.');
+  if(reproMal.length) recs.push('Priorice el descarte de las vacas <b>vacías con muchos días abiertos que ya no producen</b>: no dan leche, no traen ternero y siguen comiendo. Confirme con el veterinario si alguna es recuperable antes de sacarla.');
   recs.push('Registre el ordeño <b>todos los días</b>: entre más continua la información, más confiables son estas alertas y tendencias.');
   recs.push('Compare parejo por <b>etapa de lactancia</b>: no es lo mismo una recién parida que una próxima al secado.');
   recs.forEach(r=>h+='<li>'+r+'</li>'); h+='</ul></div>';
 
   box.innerHTML=h;
   $("#shareInforme").style.display="";
-  window._infText=buildInfText({totProm,herdAvg,vacasProm,herdSlope,caidas,irreg,descarte,top,diasCaida,dates});
+  window._infText=buildInfText({totProm,herdAvg,vacasProm,herdSlope,caidas,irreg,descarte,reproMal,top,diasCaida,dates});
 }
 function buildInfText(x){
   const L=[];
@@ -1027,7 +1041,8 @@ function buildInfText(x){
   if(x.caidas.length){ L.push(""); L.push("ALERTAS - CAIDAS (revisar salud/celo):"); x.caidas.slice(0,8).forEach(c=>L.push("- "+c.tag+": bajo "+Math.round(-c.dropPct*100)+"% (a "+c.last.toFixed(1)+" kg)")); }
   if(x.diasCaida.length){ L.push(""); L.push("DIAS DE CAIDA DEL HATO:"); x.diasCaida.slice(-5).forEach(d=>L.push("- "+d.date+": "+d.tot.toFixed(0)+" kg")); }
   if(x.irreg.length){ L.push(""); L.push("PRODUCCION IRREGULAR:"); x.irreg.slice(0,6).forEach(c=>L.push("- "+c.tag+": "+c.min.toFixed(1)+"-"+c.max.toFixed(1)+" kg")); }
-  if(x.descarte.length){ L.push(""); L.push("CANDIDATAS A DESCARTE:"); x.descarte.slice(0,10).forEach(c=>L.push("- "+c.tag+": "+c.avg.toFixed(1)+" kg/dia ("+Math.round(c.avg/x.herdAvg*100)+"% del hato)")); L.push("(Verificar lactancia, edad, prenez y salud antes de decidir.)"); }
+  if(x.descarte.length){ L.push(""); L.push("CANDIDATAS A DESCARTE (produccion):"); x.descarte.slice(0,10).forEach(c=>L.push("- "+c.tag+": "+c.avg.toFixed(1)+" kg/dia ("+Math.round(c.avg/x.herdAvg*100)+"% del hato)")); L.push("(Verificar lactancia, edad, prenez y salud antes de decidir.)"); }
+  if(x.reproMal&&x.reproMal.length){ L.push(""); L.push("DESCARTE REPRODUCTIVO (vacias con muchos dias abiertos):"); x.reproMal.slice(0,12).forEach(c=>L.push("- "+c.nombre+" ("+c.n+"): ~"+c.ab+" dias abiertos"+(c.enOrdeno?"":" - sin produccion"))); }
   L.push(""); L.push("MEJORES PRODUCTORAS:");
   x.top.forEach((c,i)=>L.push("- "+(i+1)+". "+c.tag+": "+c.avg.toFixed(1)+" kg/dia"));
   return L.join("\n");
