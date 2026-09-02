@@ -64,6 +64,10 @@
   .btn:active{transform:translateY(2px);}
   .btn.go{background:var(--green); color:#fff;}
   .btn.back{background:var(--card); color:var(--muted); border:2px solid var(--line); box-shadow:0 3px 0 var(--line);}
+  .btn.balde{background:#EAF4EC; color:var(--green-d); border:2px solid var(--green); box-shadow:0 3px 0 #cfe6d6; width:100%; height:60px; font-size:22px; margin-bottom:10px;}
+  .btn.balde:disabled{opacity:.4;}
+  .baldes-info{text-align:center; font-size:17px; color:var(--muted); margin:2px 0 10px; font-variant-numeric:tabular-nums;}
+  .baldes-info b{color:var(--green-d); font-size:19px;}
   .btn:disabled{opacity:.4;}
   .single .actions{grid-template-columns:1fr;}
 
@@ -190,6 +194,8 @@
       <div class="name" id="dispName"></div>
     </div>
     <div class="keys" id="keypad"></div>
+    <div id="baldesInfo" class="baldes-info" style="display:none;"></div>
+    <button class="btn balde" id="addBaldeBtn" style="display:none;">➕ Otro balde</button>
     <div class="actions">
       <button class="btn back" id="backBtn">◀</button>
       <button class="btn go" id="goBtn" disabled>Siguiente ▶</button>
@@ -448,6 +454,7 @@ let recog=null, recActive=false, voiceTimer=null;
 function stopVoice(){ try{ recog&&recog.abort(); }catch(e){} recActive=false; if(micKey) micKey.classList.remove("rec"); clearTimeout(voiceTimer); }
 function selectCow(c){
   pendingCow={n:c.n||"", nombre:c.nombre||""};
+  baldes=[];
   speak((c.nombre||("vaca "+c.n))+". ¿Cuántos kilos?");
   phase="kg"; buf=""; renderCapture();
 }
@@ -492,11 +499,13 @@ function startVoice(){
 let phase="vaca";      // 'vaca' | 'kg'
 let workDate=today();  // fecha en la que se registra (hoy por defecto)
 let buf="";
+let baldes=[];         // pesajes acumulados (baldes) de la vaca actual
 let pendingCow=null;   // {n, nombre}
 let micKey=null;
 
 const $=s=>document.querySelector(s);
 const disp=$("#disp"), dispName=$("#dispName"), prompt=$("#prompt"), goBtn=$("#goBtn"), backBtn=$("#backBtn");
+const addBaldeBtn=$("#addBaldeBtn"), baldesInfo=$("#baldesInfo");
 
 function buildKeypad(){
   const kp=$("#keypad"); kp.innerHTML="";
@@ -528,16 +537,25 @@ function renderCapture(){
     disp.textContent = buf||"—";
     goBtn.textContent="Siguiente ▶"; goBtn.disabled = buf==="";
     backBtn.style.visibility="hidden";
+    addBaldeBtn.style.display="none"; baldesInfo.style.display="none";
     if(buf!==""){
       const nm=hatoMap[normNum(buf)];
       if(nm!==undefined){ dispName.textContent=nm||("Vaca "+buf); dispName.className="name"; }
       else { dispName.textContent="Vaca nueva"; dispName.className="name nueva"; }
     } else dispName.textContent="";
   } else {
+    const acc=baldes.reduce((s,x)=>s+x,0);
+    const cur=parseFloat(buf)||0;
+    const total=acc+cur;
     prompt.textContent = "Kilos · "+(pendingCow.nombre||("Vaca "+pendingCow.n));
     disp.textContent = buf||"0";
     dispName.textContent = pendingCow.n ? ("Vaca "+pendingCow.n) : (pendingCow.nombre||"Vaca nueva"); dispName.className="name";
-    goBtn.textContent="Guardar ✓"; goBtn.disabled = !(parseFloat(buf)>0);
+    if(baldes.length){
+      baldesInfo.style.display="";
+      baldesInfo.innerHTML="🪣 "+baldes.map(b=>b.toFixed(1)).join(" + ")+(cur>0?" + "+cur.toFixed(1):"")+" = <b>"+total.toFixed(1)+" kg</b>";
+    } else baldesInfo.style.display="none";
+    addBaldeBtn.style.display=""; addBaldeBtn.disabled=!(cur>0);
+    goBtn.textContent="Guardar ✓"; goBtn.disabled=!(total>0);
     backBtn.style.visibility="visible";
   }
   buildKeypad();
@@ -549,10 +567,12 @@ function advance(){
     const match=hato.find(a=>a.n && normNum(a.n)===key);
     pendingCow = match ? {n:match.n, nombre:match.nombre||""} : {n:buf, nombre:""};
     speak((pendingCow.nombre||("vaca "+pendingCow.n))+". ¿Cuántos kilos?");
-    phase="kg"; buf=""; renderCapture();
+    phase="kg"; buf=""; baldes=[]; renderCapture();
   } else {
-    const kg=parseFloat(buf);
+    const total=baldes.reduce((s,x)=>s+x,0)+(parseFloat(buf)||0);
+    const kg=Math.round(total*100)/100;
     if(!(kg>0)) return;
+    const nb=baldes.length+((parseFloat(buf)>0)?1:0);
     const rec={n:pendingCow.n, nombre:pendingCow.nombre, kg:kg, hora:nowHM()};
     const d=workDate; if(!registros[d]) registros[d]=[];
     // si la vaca ya estaba ese día, reemplaza
@@ -560,12 +580,20 @@ function advance(){
     if(i>=0) registros[d][i]=rec; else registros[d].push(rec);
     saveReg();
     speak((pendingCow.nombre||("vaca "+pendingCow.n))+", "+String(kg).replace("."," punto ")+" kilos. Guardado.");
-    toast("✓ Guardado: "+(pendingCow.nombre||("Vaca "+pendingCow.n))+" · "+kg+" kg");
-    phase="vaca"; buf=""; pendingCow=null; renderCapture(); renderToday(); refreshHeader();
+    toast("✓ Guardado: "+(pendingCow.nombre||("Vaca "+pendingCow.n))+" · "+kg+" kg"+(nb>1?" ("+nb+" baldes)":""));
+    phase="vaca"; buf=""; pendingCow=null; baldes=[]; renderCapture(); renderToday(); refreshHeader();
   }
 }
 goBtn.onclick=advance;
-backBtn.onclick=()=>{ if(phase==="kg"){ phase="vaca"; buf=pendingCow?pendingCow.n:""; pendingCow=null; renderCapture(); } };
+addBaldeBtn.onclick=()=>{
+  const cur=parseFloat(buf);
+  if(!(cur>0)) return;
+  baldes.push(Math.round(cur*100)/100); buf="";
+  const total=baldes.reduce((s,x)=>s+x,0);
+  speak("Balde "+baldes.length+". Van "+String(Math.round(total*10)/10).replace("."," punto ")+" kilos.");
+  renderCapture();
+};
+backBtn.onclick=()=>{ if(phase==="kg"){ phase="vaca"; buf=pendingCow?pendingCow.n:""; pendingCow=null; baldes=[]; renderCapture(); } };
 
 function renderToday(){
   const d=workDate; const list=registros[d]||[];
